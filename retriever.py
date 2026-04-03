@@ -1,18 +1,30 @@
+from io import BytesIO
+
 import faiss
 import numpy as np
 import openai
-from chonkie import TokenChunker
-from tokenizers import Tokenizer
+from enum import Enum
+
+from docling.datamodel.base_models import InputFormat
+from docling.document_converter import DocumentConverter
+from docling_core.types.io import DocumentStream
+from unstructured.partition.text import partition_text
+
+
+class ChunkerKind(str, Enum):
+    UNSTRUCTURED = "unstructured"
+    DOCLING = "docling"
 
 
 class Retriever:
-    def __init__(self, documents, embedding_model):
+    def __init__(self, documents, embedding_model, chunker: ChunkerKind = ChunkerKind.UNSTRUCTURED):
         self._documents = documents
-        self._chunker = TokenChunker(Tokenizer.from_pretrained("gpt2"))
+        self._chunker = chunker
         self._embedding_model = embedding_model
         self._chunks = []
         self._chunk_texts = []
         self._index = None
+        self._docling_converter = None
 
     def prepare(self):
         self._chunks = self._chunks_from_documents()
@@ -25,10 +37,40 @@ class Retriever:
         return self._chunks_for_vector(query_vector, num_neighbors)
 
     def _chunks_from_documents(self):
-        return [chunk for doc in self._documents for chunk in self._chunker(doc)]
+        chunks = []
+        for doc in self._documents:
+            chunks.extend(self._chunks_from_document(doc))
+        return chunks
+
+    def _chunks_from_document(self, document):
+        if self._chunker == ChunkerKind.UNSTRUCTURED:
+            return self._unstructured_chunks(document)
+
+        if self._chunker == ChunkerKind.DOCLING:
+            return self._docling_chunks(document)
+
+        raise ValueError(f"Unsupported chunker: {self._chunker}")
+
+    def _unstructured_chunks(self, document) -> list[str]:
+        return [
+            element.text for element in partition_text(text=document)
+            if element.text
+        ]
+
+    def _init_docling(self):
+        if self._docling_converter is None:
+            self._docling_converter = DocumentConverter(allowed_formats=[InputFormat.MD])
+
+    def _docling_chunks(self, document):
+        self._init_docling()
+        stream = BytesIO(str(document).encode("utf-8"))
+        source = DocumentStream(name="input.md", stream=stream)
+        result = self._docling_converter.convert(source)
+        text = result.document.export_to_markdown()
+        return [chunk.strip() for chunk in text.split("\n\n") if chunk.strip()]
 
     def _texts_from_chunks(self):
-        return [chunk.text for chunk in self._chunks]
+        return [chunk.text if hasattr(chunk, "text") else chunk for chunk in self._chunks]
 
     def _index_from_texts(self):
         embeddings = self._embeddings_for(self._chunk_texts)
