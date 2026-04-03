@@ -6,14 +6,16 @@ import openai
 import faiss
 import numpy as np
 
-LLM_MODEL = 'llama-3.2-3b-instruct'
+LLM_MODEL = 'google/gemma-3-4b'
 EMBEDDING_MODEL = 'text-embedding-nomic-embed-text-v1.5'
 
 tokenizer = Tokenizer.from_pretrained("gpt2")
 
 chunker = TokenChunker(tokenizer)
 
-# Source: https://en.wikipedia.org/wiki/France
+# Sources:
+# - https://en.wikipedia.org/wiki/France
+# - https://en.wikipedia.org/wiki/England
 documents = """France, officially the French Republic, is a country located primarily in Western Europe.
 Its overseas regions and territories include French Guiana in South America, Saint Pierre and Miquelon in the North Atlantic, the French West Indies, and many islands in Oceania and the Indian Ocean, giving it one of the largest discontiguous exclusive economic zones in the world.
 Metropolitan France shares borders with Belgium and Luxembourg to the north, Germany to the northeast, Switzerland to the east, Italy and Monaco to the southeast, Andorra and Spain to the south, and a maritime border with the United Kingdom to the northwest.
@@ -31,6 +33,17 @@ Except for the northeast, most of France's land borders are roughly delineated b
 Metropolitan France includes various coastal islands, of which the largest is Corsica.
 Metropolitan France is situated mostly between latitudes 41° and 51° N, and longitudes 6° W and 10° E, on the western edge of Europe, and thus lies within the northern temperate zone.
 Its continental part covers about 1000 km from north to south and from east to west.
+Different regions have different styles. In the north, butter and cream are common ingredients, whereas olive oil is more commonly used in the south.[373] Each region of France has traditional specialties: cassoulet in the southwest, choucroute in Alsace, quiche in the Lorraine region, beef bourguignon in Burgundy, Provençal tapenade, etc. France is most famous for its wines[374] and cheeses, which are often named for the territory where they are produced (AOC).[375][376] A meal typically consists of three courses, entrée ('starter'), plat principal ('main course'), and fromage ('cheese') or dessert, sometimes with a salad served before the cheese or dessert.
+French cuisine is also regarded as a key element of the quality of life and the attractiveness of France. A French publication, the Michelin Guide, awards Michelin stars for excellence to a select few establishments.[377][378] The acquisition or loss of a star can have dramatic effects on the success of a restaurant. By 2006, the Michelin Guide had awarded 620 stars to French restaurants.[379]
+In addition to its wine tradition, France is also a major producer of beer and rum. The three main French brewing regions are Alsace (60% of national production), Nord-Pas-de-Calais, and Lorraine.
+England is a country that is part of the United Kingdom. It is located on the island of Great Britain, of which it covers about 62%, and more than 100 smaller adjacent islands. England shares a land border with Scotland to the north and another land border with Wales to the west, and is surrounded by the North Sea to the east, the English Channel to the south, the Celtic Sea to the south-west, and the Irish Sea to the west. Continental Europe lies to the south-east, and Ireland to the west.
+Since the early modern period the food of England has historically been characterised by its simplicity of approach and a reliance on the high quality of natural produce. During the Middle Ages and the Renaissance, English cuisine enjoyed an excellent reputation, though a decline began during the Industrial Revolution with increasing urbanisation. The cuisine of England has, however, recently undergone a revival, which has been recognised by food critics with some good ratings in Restaurant's best restaurant in the world charts.
+Traditional examples of English food include the Sunday roast, featuring a roasted joint (usually beef, lamb, chicken or pork) served with assorted vegetables, Yorkshire pudding and gravy.
+Other prominent meals include fish and chips and the full English breakfast (generally consisting of bacon, sausages, grilled tomatoes, fried bread, black pudding, baked beans, mushrooms and eggs).
+Various [English] meat pies are consumed, such as steak and kidney pie, steak and ale pie, cottage pie, pork pie (usually eaten cold)[270] and the Cornish pasty.
+[In England,] Sausages are commonly eaten, either as bangers and mash or toad in the hole. Lancashire hotpot is a well-known stew originating in the northwest.
+[In England,] Some of the more popular cheeses are Cheddar, Red Leicester, Wensleydale, Double Gloucester and Blue Stilton
+Traditional English dessert dishes include apple pie or other fruit pies; spotted dick – all generally served with custard; and, more recently, sticky toffee pudding. Sweet pastries include scones served with jam or cream, dried fruit loaves, Eccles cakes and mince pies as well as sweet or spiced biscuits.
 """.splitlines()
 
 all_chunks = []
@@ -56,12 +69,13 @@ chunk_embeddings_np = np.array(chunk_embeddings).astype('float32')
 index.add(chunk_embeddings_np)
 
 chat_model = OpenAiChat(temperature=0.55, model_name=LLM_MODEL)
-system_prompt = Prompt("You are a helpful assistant, responding to questions about the world.")
+system_prompt = Prompt("You are a helpful assistant, responding to questions about the world. Do not pose any follow-up questions or make any suggestions. Do not have a preamble in any response.")
 
 queries = [
     "Tell me about French geography, specifically about things close to the border of Belgium. Write it as a TV show script.",
     "What is interesting about French royalty? Write a poem.",
-    "What is the best French food? Mention at least one of the contextual facts.",
+    "What is interesting about English royalty? Write a poem.",
+    "What are the best French and English foods? Mention all of the contextual facts and compare them.",
 ]
 
 for query in queries:
@@ -69,12 +83,12 @@ for query in queries:
     query_embedding = get_embeddings([query])[0]
     query_embedding_np = np.array(query_embedding).astype('float32').reshape(1, -1)
 
-    k = 3
-    D, I = index.search(query_embedding_np, k)
-    retrieved_chunks = [chunk_texts[i] for i in I[0]]
+    num_neighbors = 2
+    distances, indices = index.search(query_embedding_np, num_neighbors)
+    retrieved_chunks = [chunk_texts[i] for i in indices[0]]
 
     context = "\n\n".join(retrieved_chunks)
-    user_prompt = f"Answer the question based on the following context:\n\n{context}\n\nQuestion: {query}"
+    user_prompt = f"## Context\nWhen answering the query, consider the following context:\n\n{context}\n\n## Query\nAnswer this query: {query}"
 
     question_prompt = Prompt(user_prompt)
     chain = Chain(
