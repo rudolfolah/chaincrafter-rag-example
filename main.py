@@ -1,17 +1,4 @@
-from chonkie import TokenChunker
-from tokenizers import Tokenizer
-from chaincrafter import Chain, Prompt
-from chaincrafter.models import OpenAiChat
-import openai
-import faiss
-import numpy as np
-
-LLM_MODEL = 'google/gemma-3-4b'
-EMBEDDING_MODEL = 'text-embedding-nomic-embed-text-v1.5'
-
-tokenizer = Tokenizer.from_pretrained("gpt2")
-
-chunker = TokenChunker(tokenizer)
+from retrieval_augmented_generator import RetrievalAugmentedGenerator
 
 # Sources:
 # - https://en.wikipedia.org/wiki/France
@@ -46,31 +33,6 @@ Various [English] meat pies are consumed, such as steak and kidney pie, steak an
 Traditional English dessert dishes include apple pie or other fruit pies; spotted dick – all generally served with custard; and, more recently, sticky toffee pudding. Sweet pastries include scones served with jam or cream, dried fruit loaves, Eccles cakes and mince pies as well as sweet or spiced biscuits.
 """.splitlines()
 
-all_chunks = []
-for doc in documents:
-    chunks = chunker(doc)
-    all_chunks.extend(chunks)
-
-chunk_texts = [chunk.text for chunk in all_chunks]
-
-def get_embeddings(texts):
-    response = openai.embeddings.create(
-        input=texts,
-        model=EMBEDDING_MODEL,
-    )
-    embeddings = [data.embedding for data in response.data]
-    return embeddings
-
-chunk_embeddings = get_embeddings(chunk_texts)
-
-embedding_dim = len(chunk_embeddings[0])
-index = faiss.IndexFlatL2(embedding_dim)
-chunk_embeddings_np = np.array(chunk_embeddings).astype('float32')
-index.add(chunk_embeddings_np)
-
-chat_model = OpenAiChat(temperature=0.55, model_name=LLM_MODEL)
-system_prompt = Prompt("You are a helpful assistant, responding to questions about the world. Do not pose any follow-up questions or make any suggestions. Do not have a preamble in any response.")
-
 queries = [
     "Tell me about French geography, specifically about things close to the border of Belgium. Write it as a TV show script.",
     "What is interesting about French royalty? Write a poem.",
@@ -78,24 +40,12 @@ queries = [
     "What are the best French and English foods? Mention all of the contextual facts and compare them.",
 ]
 
-for query in queries:
-    print(f"--- {query}")
-    query_embedding = get_embeddings([query])[0]
-    query_embedding_np = np.array(query_embedding).astype('float32').reshape(1, -1)
-
-    num_neighbors = 2
-    distances, indices = index.search(query_embedding_np, num_neighbors)
-    retrieved_chunks = [chunk_texts[i] for i in indices[0]]
-
-    context = "\n\n".join(retrieved_chunks)
-    user_prompt = f"## Context\nWhen answering the query, consider the following context:\n\n{context}\n\n## Query\nAnswer this query: {query}"
-
-    question_prompt = Prompt(user_prompt)
-    chain = Chain(
-        system_prompt,
-        (question_prompt, "answer"),
-    )
-    messages = chain.run(chat_model)
-    for message in messages:
-        print(f"{message['role']}: {message['content']}")
-    print("\n\n")
+rag = RetrievalAugmentedGenerator(
+    documents=documents,
+    queries=queries,
+    embedding_model="text-embedding-nomic-embed-text-v1.5",
+    llm_model="google/gemma-3-4b",
+    temperature=0.7,
+    num_neighbors=3,
+)
+rag.run()
