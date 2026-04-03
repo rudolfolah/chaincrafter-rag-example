@@ -4,10 +4,10 @@ Example of using [chonkie](https://github.com/bhavnicksm/chonkie) with [chaincra
 Tested with LM Studio running as locally hosted LLM server, for embeddings you will need the Nomic model: `text-embedding-nomic-embed-text-v1.5`.
 
 ```shell
-poetry install
+uv sync
 export OPENAI_API_KEY='openai-api-key'
 export OPENAI_BASE_URL='http://localhost:1234/v1'
-poetry run python main.py
+uv run python main.py
 ```
 
 The source of the documents in the example code is Wikipedia, the URLs to the specific pages are in comments of the code.
