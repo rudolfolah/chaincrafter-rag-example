@@ -6,7 +6,16 @@ from retriever import Retriever
 
 
 class RetrievalAugmentedGenerator:
-    def __init__(self, documents, queries, embedding_model, llm_model, num_neighbors=3, temperature=0.55, system_prompt=None):
+    def __init__(
+        self,
+        documents,
+        queries,
+        embedding_model,
+        llm_model,
+        num_neighbors=3,
+        temperature=0.55,
+        system_prompt=None,
+    ):
         self.queries = queries
         self.retriever = Retriever(documents, embedding_model)
         self._num_neighbors = num_neighbors
