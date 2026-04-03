@@ -1,3 +1,4 @@
+from retriever import ChunkerKind
 from retrieval_augmented_generator import RetrievalAugmentedGenerator
 
 # Sources:
@@ -40,6 +41,10 @@ queries = [
     "What are the best French and English foods? Mention all of the contextual facts and compare them.",
 ]
 
+# Workaround needed for unstructured, without this there is an error
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 rag = RetrievalAugmentedGenerator(
     documents=documents,
     queries=queries,
@@ -47,5 +52,7 @@ rag = RetrievalAugmentedGenerator(
     llm_model="google/gemma-3-4b",
     temperature=0.7,
     num_neighbors=3,
+    # chunker=ChunkerKind.UNSTRUCTURED,
+    chunker=ChunkerKind.DOCLING,
 )
 rag.run()

@@ -2,7 +2,7 @@ from chaincrafter import Chain
 from chaincrafter.models import OpenAiChat
 
 from prompt_builder import PromptBuilder
-from retriever import Retriever
+from retriever import Retriever, ChunkerKind
 
 
 class RetrievalAugmentedGenerator:
@@ -15,9 +15,10 @@ class RetrievalAugmentedGenerator:
         num_neighbors=3,
         temperature=0.55,
         system_prompt=None,
+        chunker: ChunkerKind = ChunkerKind.UNSTRUCTURED,
     ):
         self.queries = queries
-        self.retriever = Retriever(documents, embedding_model)
+        self.retriever = Retriever(documents, embedding_model, chunker=chunker)
         self._num_neighbors = num_neighbors
         system_prompt = system_prompt or "You are a helpful assistant, responding to questions about the world. " \
             "Do not pose any follow-up questions or make any suggestions. " \
