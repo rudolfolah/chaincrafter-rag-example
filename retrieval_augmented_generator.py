@@ -4,6 +4,9 @@ from chaincrafter.models import OpenAiChat
 from prompt_builder import PromptBuilder
 from retriever import Retriever, ChunkerKind
 
+from trulens.core.otel.instrument import instrument as trulens_instrument
+from trulens.otel.semconv.trace import SpanAttributes
+
 
 class RetrievalAugmentedGenerator:
     def __init__(
@@ -42,11 +45,19 @@ class RetrievalAugmentedGenerator:
         self.prepare()
         self.generate()
 
+    @trulens_instrument(
+        span_type=SpanAttributes.SpanType.RETRIEVAL,
+        attributes={
+            SpanAttributes.RETRIEVAL.QUERY_TEXT: "query",
+            SpanAttributes.RETRIEVAL.RETRIEVED_CONTEXTS: "return",
+        },
+    )
     def get_retrieved_documents(self, query):
         chunks = self.retriever.retrieve(query, num_neighbors=self._num_neighbors)
         self._retrieved_documents[query] = chunks
         return chunks
 
+    @trulens_instrument(span_type=SpanAttributes.SpanType.GENERATION)
     def _answer(self, query):
         chunks = self.get_retrieved_documents(query)
         chain = Chain(

@@ -13,7 +13,9 @@ dependencies = [
     "unstructured==0.18.32", # 0.20.2+ requires newer versions of psutil and conflicts with trulens
     "numpy==2.4.4",
     "faiss-cpu==1.13.2",
-    "openai==2.30.0",
+    "openai==1.109.1",
     "arize-phoenix==13.21.0", # 13.22.0+ requires graphql-core>=3.3.0a0
     "trulens==2.7.1",
+    "trulens-providers-openai==2.7.1",
+    "trulens-dashboard==2.7.1",
 ]
