@@ -20,6 +20,7 @@ class RetrievalAugmentedGenerator:
         self.queries = queries
         self.retriever = Retriever(documents, embedding_model, chunker=chunker)
         self._num_neighbors = num_neighbors
+        self._retrieved_documents = {}
         system_prompt = system_prompt or "You are a helpful assistant, responding to questions about the world. " \
             "Do not pose any follow-up questions or make any suggestions. " \
             "Do not have a preamble in any response."
@@ -41,8 +42,13 @@ class RetrievalAugmentedGenerator:
         self.prepare()
         self.generate()
 
-    def _answer(self, query):
+    def get_retrieved_documents(self, query):
         chunks = self.retriever.retrieve(query, num_neighbors=self._num_neighbors)
+        self._retrieved_documents[query] = chunks
+        return chunks
+
+    def _answer(self, query):
+        chunks = self.get_retrieved_documents(query)
         chain = Chain(
             self.prompts.system_prompt(),
             (self.prompts.user_prompt(query, chunks), "answer")

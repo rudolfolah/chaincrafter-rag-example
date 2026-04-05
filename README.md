@@ -8,6 +8,7 @@ uv sync
 export OPENAI_API_KEY='openai-api-key'
 export OPENAI_BASE_URL='http://localhost:1234/v1'
 uv run python main.py
+uv run python eval_phoenix.py
 ```
 
 The source of the documents in the example code is Wikipedia, the URLs to the specific pages are in comments of the code.
