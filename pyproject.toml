@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "chaincrafter @ git+https://github.com/rudolfolah/chaincrafter.git@update-openai-api-calls#subdirectory=python",
     "docling==2.84.0",
-    "unstructured==0.18.32", # 0.20.2+ requires newer versions of psutil and conflicts with trulens
+    "unstructured==0.20.8", # 0.22.0+ requires newer versions of wrapt and conflicts with arize-phoenix
     "numpy==2.4.4",
     "faiss-cpu==1.13.2",
     "openai==2.30.0",
