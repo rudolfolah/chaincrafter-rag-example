@@ -12,3 +12,15 @@ uv run python eval_phoenix.py
 ```
 
 The source of the documents in the example code is Wikipedia, the URLs to the specific pages are in comments of the code.
+
+## Question and Answer
+
+Question and Answer with PDF and MarkDown documents retrieved from `./docs/`. Copy documents into `./docs/` before running.
+
+```shell
+export OPENAI_API_KEY='openai-api-key'
+export OPENAI_BASE_URL='http://localhost:1234/v1'
+uv run python qa.py
+```
+
+Unstructured requires `libmagic` for detecting the file type of the documents, install it on MacOS with `brew install libmagic`
