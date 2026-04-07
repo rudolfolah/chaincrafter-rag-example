@@ -1,4 +1,5 @@
 from io import BytesIO
+from pathlib import Path
 
 import faiss
 import numpy as np
@@ -8,7 +9,8 @@ from enum import Enum
 from docling.datamodel.base_models import InputFormat
 from docling.document_converter import DocumentConverter
 from docling_core.types.io import DocumentStream
-from unstructured.partition.text import partition_text
+from unstructured.partition.auto import partition as unstructured_partition
+from unstructured.partition.text import partition_text as unstructured_partition_text
 
 
 class ChunkerKind(str, Enum):
@@ -51,23 +53,29 @@ class Retriever:
 
         raise ValueError(f"Unsupported chunker: {self._chunker}")
 
-    def _unstructured_chunks(self, document) -> list[str]:
-        return [
-            element.text for element in partition_text(text=document)
-            if element.text
-        ]
+    def _unstructured_chunks(self, document: str | Path) -> list[str]:
+        if isinstance(document, Path):
+            print("Processing document from path:", document)
+            elements = unstructured_partition(document)
+        else:
+            elements = unstructured_partition_text(text=document)
+        return [str(element) for element in elements]
 
     def _init_docling(self):
         if self._docling_converter is None:
-            self._docling_converter = DocumentConverter(allowed_formats=[InputFormat.MD])
+            self._docling_converter = DocumentConverter(allowed_formats=[InputFormat.MD, InputFormat.PDF])
 
-    def _docling_chunks(self, document):
+    def _docling_chunks(self, document: str | Path):
         self._init_docling()
-        stream = BytesIO(str(document).encode("utf-8"))
-        source = DocumentStream(name="input.md", stream=stream)
-        result = self._docling_converter.convert(source)
-        text = result.document.export_to_markdown()
-        return [chunk.strip() for chunk in text.split("\n\n") if chunk.strip()]
+        if isinstance(document, Path):
+            print("Processing document from path:", document)
+            result = self._docling_converter.convert(str(document))
+        else:
+            stream = BytesIO(str(document).encode("utf-8"))
+            source = DocumentStream(name="input.md", stream=stream)
+            result = self._docling_converter.convert(source)
+        markdown = result.document.export_to_markdown()
+        return [chunk.strip() for chunk in markdown.split("\n\n") if chunk.strip()]
 
     def _texts_from_chunks(self):
         return [chunk.text if hasattr(chunk, "text") else chunk for chunk in self._chunks]

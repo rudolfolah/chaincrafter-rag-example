@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from chaincrafter import Chain
 from chaincrafter.models import OpenAiChat
 
@@ -8,15 +10,17 @@ from retriever import Retriever, ChunkerKind
 class RetrievalAugmentedGenerator:
     def __init__(
         self,
-        documents,
-        queries,
-        embedding_model,
-        llm_model,
-        num_neighbors=3,
-        temperature=0.55,
-        system_prompt=None,
+        documents: list[str] | list[Path],
+        queries: list[str],
+        embedding_model: str,
+        llm_model: str,
+        num_neighbors: int = 3,
+        temperature: float = 0.55,
+        system_prompt: str | None =None,
         chunker: ChunkerKind = ChunkerKind.UNSTRUCTURED,
     ):
+        if len(documents) <= 0:
+            raise ValueError("documents must be non-empty")
         self.queries = queries
         self.retriever = Retriever(documents, embedding_model, chunker=chunker)
         self._num_neighbors = num_neighbors
