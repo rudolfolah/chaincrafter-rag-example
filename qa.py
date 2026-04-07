@@ -19,7 +19,6 @@ rag = RetrievalAugmentedGenerator(
     temperature=0.7,
     num_neighbors=5,
     chunker=ChunkerKind.UNSTRUCTURED,
-    # chunker=ChunkerKind.DOCLING,
 )
 rag.prepare()
 
