@@ -22,9 +22,12 @@ rag = RetrievalAugmentedGenerator(
 )
 rag.prepare()
 
-while True:
-    query = input("Enter your question (Ctrl+C or 'exit' to quit): ")
-    if query.lower() == 'exit':
-        break
-    rag.queries = [query]
-    rag.generate()
+try:
+    while True:
+        query = input("Enter your question (Ctrl+C or 'exit' to quit): ")
+        if query.lower() == 'exit':
+            break
+        rag.queries = [query]
+        rag.generate()
+except (KeyboardInterrupt, EOFError):
+    print("\nExiting...")

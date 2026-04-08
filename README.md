@@ -11,6 +11,8 @@ uv run python main.py
 uv run python eval_phoenix.py
 ```
 
+Unstructured requires `libmagic` for detecting the file type of the documents, install it on MacOS with `brew install libmagic`
+
 ## Project Structure
 - [`PromptBuilder` in `prompt_builder.py`](./prompt_builder.py) builds system and user prompts
 - [`retriever.py`](./retriever.py) provides the `Retriever` class for chunking documents and retrieving documents
@@ -30,7 +32,20 @@ export OPENAI_BASE_URL='http://localhost:1234/v1'
 uv run python qa.py
 ```
 
-Unstructured requires `libmagic` for detecting the file type of the documents, install it on MacOS with `brew install libmagic`
+### [`wiki.py`](./wiki.py) - LLM Wiki
+Maintains a persistent, compounding wiki in `./wiki/`. It supports ingesting new sources, answering queries, and performing health checks. Ensure `./wiki/` exists and contains a `SCHEMA.md` before running.
+
+```shell
+export OPENAI_API_KEY='openai-api-key'
+export OPENAI_BASE_URL='http://localhost:1234/v1'
+
+uv run python wiki.py
+```
+
+Sample interactions:
+- `What is systems thinking?` (Answered using the wiki and automatically filed back)
+- `/ingest docs/research.pdf` (Ingests a new source into the wiki)
+- `/lint` (Performs a health check for contradictions and gaps)
 
 ## [`eval_phoenix.py`](./eval_phoenix.py) - Evaluation
 Runs an evaluation of the answers from a set of documents and queries, based on [`main.py`](./main.py).
