@@ -15,4 +15,6 @@ dependencies = [
     "faiss-cpu==1.13.2",
     "openai==2.30.0",
     "arize-phoenix==13.21.0", # 13.22.0+ requires graphql-core>=3.3.0a0
+    "rank-bm25",
+    "sentence-transformers",
 ]
