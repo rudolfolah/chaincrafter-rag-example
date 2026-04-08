@@ -1,2 +1,8 @@
 /docs/*
 !/docs/.keep
+/wiki/*
+!/wiki/.keep
+!/wiki/SCHEMA.md
+
+.junie
+.idea
