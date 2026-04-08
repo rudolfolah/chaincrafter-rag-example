@@ -16,13 +16,24 @@ class RetrievalAugmentedGenerator:
         llm_model: str,
         num_neighbors: int = 3,
         temperature: float = 0.55,
-        system_prompt: str | None =None,
+        system_prompt: str | None = None,
         chunker: ChunkerKind = ChunkerKind.UNSTRUCTURED,
+        use_hybrid=True,
+        use_reranking=True,
+        use_contextual_retrieval=True,
     ):
         if len(documents) <= 0:
             raise ValueError("documents must be non-empty")
         self.queries = queries
-        self.retriever = Retriever(documents, embedding_model, chunker=chunker)
+        self.retriever = Retriever(
+            documents,
+            embedding_model,
+            llm_model=llm_model,
+            chunker=chunker,
+            use_hybrid=use_hybrid,
+            use_reranking=use_reranking,
+            use_contextual_retrieval=use_contextual_retrieval,
+        )
         self._num_neighbors = num_neighbors
         self._retrieved_documents = {}
         system_prompt = system_prompt or "You are a helpful assistant, responding to questions about the world. " \
