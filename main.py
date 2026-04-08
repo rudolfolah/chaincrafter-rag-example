@@ -45,14 +45,18 @@ queries = [
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-rag = RetrievalAugmentedGenerator(
-    documents=documents,
-    queries=queries,
-    embedding_model="text-embedding-nomic-embed-text-v1.5",
-    llm_model="google/gemma-3-4b",
-    temperature=0.7,
-    num_neighbors=3,
-    # chunker=ChunkerKind.UNSTRUCTURED,
-    chunker=ChunkerKind.DOCLING,
-)
-rag.run()
+if __name__ == "__main__":
+    rag = RetrievalAugmentedGenerator(
+        documents=documents,
+        queries=queries,
+        embedding_model="text-embedding-nomic-embed-text-v1.5",
+        llm_model="google/gemma-3-4b",
+        temperature=0.7,
+        num_neighbors=3,
+        # chunker=ChunkerKind.UNSTRUCTURED,
+        chunker=ChunkerKind.DOCLING,
+        use_hybrid=True,
+        use_reranking=True,
+        use_contextual_retrieval=True,
+    )
+    rag.run()
