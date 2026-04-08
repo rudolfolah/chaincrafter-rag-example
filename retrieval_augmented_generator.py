@@ -53,8 +53,9 @@ class RetrievalAugmentedGenerator:
 
     def _answer(self, query):
         chunks = self.get_retrieved_documents(query)
+        context = "\n\n".join(chunks)
         chain = Chain(
             self.prompts.system_prompt(),
-            (self.prompts.user_prompt(query, chunks), "answer")
+            (self.prompts.user_prompt(), "answer")
         )
-        return chain.run(self.chat_model)
+        return chain.run(self.chat_model, {"query": query, "context": context})
