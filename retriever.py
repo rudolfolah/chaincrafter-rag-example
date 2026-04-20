@@ -22,14 +22,14 @@ class ChunkerKind(str, Enum):
 
 class Retriever:
     def __init__(
-    self,
-    documents,
-    embedding_model,
-    llm_model=None,
-    chunker: ChunkerKind = ChunkerKind.UNSTRUCTURED,
-    use_hybrid=True,
-    use_reranking=True,
-    use_contextual_retrieval=True,
+        self,
+        documents,
+        embedding_model,
+        llm_model=None,
+        chunker: ChunkerKind = ChunkerKind.UNSTRUCTURED,
+        use_hybrid=True,
+        use_reranking=True,
+        use_contextual_retrieval=True,
     ):
         self.documents = documents
         self.chunker = chunker
