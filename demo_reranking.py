@@ -1,6 +1,7 @@
 import os
 from retriever import Retriever
 from main import documents as main_documents, queries as main_queries
+from model_provider import model_names
 
 # Workaround for unstructured
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -9,7 +10,7 @@ def run_demo():
     print("--- Demo: Re-ranking using main.py text ---")
     
     # Common settings
-    embedding_model = "text-embedding-nomic-embed-text-v1.5"
+    _, embedding_model = model_names("google/gemma-3-4b")
     # Using the first query from main.py
     query = main_queries[0]
     
@@ -25,9 +26,9 @@ def run_demo():
     retriever_no_rerank.prepare()
     results = retriever_no_rerank.retrieve(query, num_neighbors=2)
     print(f"Query: {query}")
-    print(f"Top 2 Results (No Rerank):")
+    print("Top 2 Results (No Rerank):")
     for i, res in enumerate(results):
-        print(f"[{i+1}] {res}")
+        print(f"[{i+1}] {res.text}")
 
     # Case 2: With Re-ranking (Cross-encoder)
     print("\n[Case 2: With Re-ranking]")
@@ -41,9 +42,9 @@ def run_demo():
     retriever_rerank.prepare()
     results = retriever_rerank.retrieve(query, num_neighbors=2)
     print(f"Query: {query}")
-    print(f"Top 2 Results (With Rerank):")
+    print("Top 2 Results (With Rerank):")
     for i, res in enumerate(results):
-        print(f"[{i+1}] {res}")
+        print(f"[{i+1}] {res.text}")
 
 if __name__ == "__main__":
     run_demo()

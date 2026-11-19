@@ -1,5 +1,6 @@
 import os
 
+from model_provider import model_names
 from retriever import ChunkerKind
 from retrieval_augmented_generator import RetrievalAugmentedGenerator
 
@@ -60,26 +61,28 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 llm = LLM(provider="openai", model="gpt-4o")
 relevance_eval = DocumentRelevanceEvaluator(llm=llm)
 
+chat_model, embedding_model = model_names("google/gemma-3-4b")
 rag = RetrievalAugmentedGenerator(
     documents=documents,
     queries=queries,
-    embedding_model="text-embedding-nomic-embed-text-v1.5",
-    llm_model="google/gemma-3-4b",
+    embedding_model=embedding_model,
+    llm_model=chat_model,
     temperature=0.7,
     num_neighbors=3,
     chunker=ChunkerKind.DOCLING,
 )
-rag.run()
+answers = rag.run()
 
-for query in queries:
-    retrieved_documents = rag.get_retrieved_documents(query)
+for answer in answers:
+    query = answer.query
+    retrieved_documents = answer.retrieved_chunks
 
     print(f"\nQuery: {query}")
     for i, doc in enumerate(retrieved_documents):
         scores = relevance_eval.evaluate(
             {
                 "input": query,
-                "document_text": doc,
+                "document_text": doc.text,
             }
         )
         print(f"Document {i + 1}: {scores[0].label} ({scores[0].score})")

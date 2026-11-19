@@ -1,3 +1,6 @@
+import os
+
+from model_provider import model_names
 from retriever import ChunkerKind
 from retrieval_augmented_generator import RetrievalAugmentedGenerator
 
@@ -42,15 +45,15 @@ queries = [
 ]
 
 # Workaround needed for unstructured, without this there is an error
-import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 if __name__ == "__main__":
+    chat_model, embedding_model = model_names("google/gemma-3-4b")
     rag = RetrievalAugmentedGenerator(
         documents=documents,
         queries=queries,
-        embedding_model="text-embedding-nomic-embed-text-v1.5",
-        llm_model="google/gemma-3-4b",
+        embedding_model=embedding_model,
+        llm_model=chat_model,
         temperature=0.7,
         num_neighbors=3,
         # chunker=ChunkerKind.UNSTRUCTURED,
@@ -59,4 +62,8 @@ if __name__ == "__main__":
         use_reranking=True,
         use_contextual_retrieval=True,
     )
-    rag.run()
+    for answer in rag.run():
+        print(f"--- {answer.query}")
+        for message in answer.messages:
+            print(f"{message['role']}: {message['content']}")
+        print("\n")
