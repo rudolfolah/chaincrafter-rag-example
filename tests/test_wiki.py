@@ -49,7 +49,7 @@ def test_wiki_documents_uses_explicit_root_and_excludes_structural_files(tmp_pat
     (tmp_path / "SCHEMA.md").write_text("schema", encoding="utf-8")
     (tmp_path / "index.md").write_text("index", encoding="utf-8")
 
-    assert wiki_documents(tmp_path) == [nested_schema, page]
+    assert wiki_documents(tmp_path) == [page, nested_schema]
 
     wiki = make_wiki(tmp_path)
     wiki._update_index(tmp_path)
