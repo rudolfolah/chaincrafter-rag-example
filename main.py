@@ -1,3 +1,5 @@
+import os
+
 from retriever import ChunkerKind
 from retrieval_augmented_generator import RetrievalAugmentedGenerator
 
@@ -42,7 +44,6 @@ queries = [
 ]
 
 # Workaround needed for unstructured, without this there is an error
-import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 if __name__ == "__main__":
@@ -59,4 +60,8 @@ if __name__ == "__main__":
         use_reranking=True,
         use_contextual_retrieval=True,
     )
-    rag.run()
+    for answer in rag.run():
+        print(f"--- {answer.query}")
+        for message in answer.messages:
+            print(f"{message['role']}: {message['content']}")
+        print("\n")

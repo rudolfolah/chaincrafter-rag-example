@@ -25,7 +25,7 @@ def run_demo():
     retriever_vector.prepare()
     results = retriever_vector.retrieve(query, num_neighbors=1)
     print(f"Query: {query}")
-    print(f"Top Result: {results[0]}")
+    print(f"Top Result: {results[0].text}")
 
     # Case 2: Hybrid (Vector + BM25 with RRF)
     print("\n[Case 2: Hybrid (Vector + BM25 with RRF)]")
@@ -39,7 +39,7 @@ def run_demo():
     retriever_hybrid.prepare()
     results = retriever_hybrid.retrieve(query, num_neighbors=1)
     print(f"Query: {query}")
-    print(f"Top Result: {results[0]}")
+    print(f"Top Result: {results[0].text}")
 
 if __name__ == "__main__":
     run_demo()

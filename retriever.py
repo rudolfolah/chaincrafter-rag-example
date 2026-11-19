@@ -1,16 +1,18 @@
+import logging
+import re
+from dataclasses import dataclass, replace
+from enum import Enum
 from io import BytesIO
 from pathlib import Path
 
 import faiss
 import numpy as np
 import openai
-from enum import Enum
-from rank_bm25 import BM25Okapi
-from sentence_transformers import CrossEncoder
-
 from docling.datamodel.base_models import InputFormat
 from docling.document_converter import DocumentConverter
 from docling_core.types.io import DocumentStream
+from rank_bm25 import BM25Okapi
+from sentence_transformers import CrossEncoder
 from unstructured.partition.auto import partition as unstructured_partition
 from unstructured.partition.text import partition_text as unstructured_partition_text
 
@@ -20,121 +22,201 @@ class ChunkerKind(str, Enum):
     DOCLING = "docling"
 
 
+class ContextFailurePolicy(str, Enum):
+    RAISE = "raise"
+    FALLBACK = "fallback"
+
+
+@dataclass(frozen=True)
+class ParsedDocument:
+    text: str
+    chunks: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RetrievedChunk:
+    text: str
+    original_text: str
+    document_index: int
+    source: Path | None = None
+    score: float | None = None
+
+
 class Retriever:
+    _token_pattern = re.compile(r"\w+", re.UNICODE)
+
     def __init__(
-    self,
-    documents,
-    embedding_model,
-    llm_model=None,
-    chunker: ChunkerKind = ChunkerKind.UNSTRUCTURED,
-    use_hybrid=True,
-    use_reranking=True,
-    use_contextual_retrieval=True,
+        self,
+        documents,
+        embedding_model,
+        llm_model=None,
+        chunker: ChunkerKind = ChunkerKind.UNSTRUCTURED,
+        use_hybrid=True,
+        use_reranking=True,
+        use_contextual_retrieval=True,
+        context_failure_policy: ContextFailurePolicy = ContextFailurePolicy.RAISE,
+        openai_client=None,
+        reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
     ):
-        self.documents = documents
+        self.documents = list(documents)
         self.chunker = chunker
         self.embedding_model = embedding_model
         self.llm_model = llm_model
         self.use_hybrid = use_hybrid
         self.use_reranking = use_reranking
         self.use_contextual_retrieval = use_contextual_retrieval
-        self._chunks = []
-        self._chunk_texts = []
+        self.context_failure_policy = context_failure_policy
+        self._openai = openai_client or openai
+        self._reranker_model = reranker_model
+        self._indexed_chunks: list[RetrievedChunk] = []
         self._index = None
         self._bm25 = None
-        self._reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+        self._reranker = None
         self._docling_converter = None
+
+    @property
+    def is_ready(self) -> bool:
+        return self._index is not None and self._index.ntotal > 0
 
     def prepare(self):
         self._rebuild_from_documents(self.documents)
+        return self
 
-    def retrieve(self, query, num_neighbors=2):
-        # 1. Vector search
+    def retrieve(self, query: str, num_neighbors: int = 2) -> list[RetrievedChunk]:
+        if num_neighbors <= 0:
+            raise ValueError("num_neighbors must be greater than zero")
+        if not self.is_ready:
+            raise RuntimeError("retriever has no searchable chunks; call prepare() with supported documents")
+
+        candidate_count = min(self._index.ntotal, max(num_neighbors, num_neighbors * 5))
         query_vector = self._embedding_for(query)
-        vector_results_indices = self._indices_for_vector(query_vector, num_neighbors * 5)
-        
-        combined_indices = vector_results_indices
-        
-        # 2. Hybrid search (BM25 + RRF)
+        vector_indices = self._indices_for_vector(query_vector, candidate_count)
+        combined_indices = vector_indices
+
         if self.use_hybrid and self._bm25 is not None:
-            tokenized_query = query.lower().split()
+            tokenized_query = self._tokenize(query)
             bm25_scores = self._bm25.get_scores(tokenized_query)
-            bm25_indices = np.argsort(bm25_scores)[::-1][:num_neighbors * 5]
-            combined_indices = self._rrf_combine([vector_results_indices, bm25_indices])
-        
-        # 3. Re-ranking
-        if self.use_reranking and len(combined_indices) > 0:
-            candidate_texts = [self._chunk_texts[i] for i in combined_indices]
+            bm25_indices = np.argsort(bm25_scores)[::-1][:candidate_count]
+            combined_indices = self._rrf_combine([vector_indices, bm25_indices])
+
+        if self.use_reranking and combined_indices:
+            candidate_texts = [self._indexed_chunks[index].text for index in combined_indices]
             pairs = [[query, text] for text in candidate_texts]
-            scores = self._reranker.predict(pairs)
-            ranked_indices = [combined_indices[i] for i in np.argsort(scores)[::-1]]
-            return [self._chunk_texts[i] for i in ranked_indices[:num_neighbors]]
-        
-        return [self._chunk_texts[i] for i in combined_indices[:num_neighbors]]
+            scores = self._get_reranker().predict(pairs)
+            score_order = np.argsort(scores)[::-1]
+            return [
+                replace(
+                    self._indexed_chunks[combined_indices[position]],
+                    score=float(scores[position]),
+                )
+                for position in score_order[:num_neighbors]
+            ]
 
-    def _rrf_combine(self, rankings, k=60):
-        scores = {}
+        return [self._indexed_chunks[index] for index in combined_indices[:num_neighbors]]
+
+    @staticmethod
+    def _rrf_combine(rankings, k=60) -> list[int]:
+        scores: dict[int, float] = {}
         for ranking in rankings:
-            for rank, index in enumerate(ranking):
+            seen = set()
+            for rank, raw_index in enumerate(ranking):
+                index = int(raw_index)
+                if index < 0 or index in seen:
+                    continue
+                seen.add(index)
                 scores[index] = scores.get(index, 0) + 1 / (k + rank + 1)
-        return sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+        return sorted(scores, key=scores.__getitem__, reverse=True)
 
-    def _indices_for_vector(self, vector, num_neighbors):
-        query = np.array(vector).astype("float32").reshape(1, -1)
-        _, indices = self._index.search(query, num_neighbors)
-        return indices[0]
+    def _indices_for_vector(self, vector, num_neighbors: int) -> list[int]:
+        query = np.asarray(vector, dtype="float32").reshape(1, -1)
+        faiss.normalize_L2(query)
+        _, indices = self._index.search(query, min(num_neighbors, self._index.ntotal))
+        return [int(index) for index in indices[0] if index >= 0]
 
     def add_documents(self, documents):
-        self.documents.extend(documents)
-        self._append_documents(documents)
+        new_documents = list(documents)
+        start_index = len(self.documents)
+        self.documents.extend(new_documents)
+        self._append_documents(new_documents, start_index=start_index)
         return self
 
     def _rebuild_from_documents(self, documents):
-        self._chunks = []
-        self._chunk_texts = []
+        self._indexed_chunks = []
         self._index = None
-        self._append_documents(documents)
+        self._bm25 = None
+        self._append_documents(documents, start_index=0)
 
-    def _append_documents(self, documents):
-        for document in documents:
-            chunks = self._chunks_from_document(document)
-            chunk_texts = [chunk.text if hasattr(chunk, "text") else chunk for chunk in chunks]
-            
-            if not chunk_texts:
+    def _append_documents(self, documents, start_index: int):
+        for document_index, document in enumerate(documents, start=start_index):
+            parsed = self._parse_document(document)
+            if not parsed.chunks:
                 continue
 
-            # Contextual Retrieval
-            if self.use_contextual_retrieval and self.llm_model:
-                full_text = self._get_full_text_for_document(document)
-                final_texts = []
-                for chunk_text in chunk_texts:
-                    context = self._generate_context_for_chunk(full_text, chunk_text)
-                    final_texts.append(f"{context}\n\n{chunk_text}")
-            else:
-                final_texts = chunk_texts
+            indexed_chunks = []
+            for chunk_text in parsed.chunks:
+                final_text = chunk_text
+                if self.use_contextual_retrieval and self.llm_model:
+                    context = self._generate_context_for_chunk(parsed.text, chunk_text)
+                    if context:
+                        final_text = f"{context}\n\n{chunk_text}"
+                indexed_chunks.append(
+                    RetrievedChunk(
+                        text=final_text,
+                        original_text=chunk_text,
+                        document_index=document_index,
+                        source=document if isinstance(document, Path) else None,
+                    )
+                )
 
-            embeddings = self._embeddings_for(final_texts)
-            vectors = np.array(embeddings).astype("float32")
-            self._chunks.extend(chunks)
-            self._chunk_texts.extend(final_texts)
+            embeddings = self._embeddings_for([chunk.text for chunk in indexed_chunks])
+            vectors = np.asarray(embeddings, dtype="float32")
+            if vectors.ndim != 2 or vectors.shape[0] != len(indexed_chunks):
+                raise ValueError("embedding API returned an unexpected vector shape")
+            faiss.normalize_L2(vectors)
             if self._index is None:
-                self._index = faiss.IndexFlatL2(vectors.shape[1])
+                self._index = faiss.IndexFlatIP(vectors.shape[1])
+            elif self._index.d != vectors.shape[1]:
+                raise ValueError("embedding dimensions changed while adding documents")
             self._index.add(vectors)
-        
-        # Update BM25 index after all documents are added
-        if self._chunk_texts:
-            tokenized_corpus = [doc.lower().split() for doc in self._chunk_texts]
+            self._indexed_chunks.extend(indexed_chunks)
+
+        if self._indexed_chunks:
+            tokenized_corpus = [self._tokenize(chunk.text) for chunk in self._indexed_chunks]
             self._bm25 = BM25Okapi(tokenized_corpus)
 
-    def _get_full_text_for_document(self, document):
-        if isinstance(document, Path):
-            return document.read_text(encoding="utf-8", errors="ignore")
-        return str(document)
+    def _parse_document(self, document: str | Path) -> ParsedDocument:
+        if self.chunker == ChunkerKind.UNSTRUCTURED:
+            return self._parse_with_unstructured(document)
+        if self.chunker == ChunkerKind.DOCLING:
+            return self._parse_with_docling(document)
+        raise ValueError(f"Unsupported chunker: {self.chunker}")
 
-    def _generate_context_for_chunk(self, full_text, chunk_text):
-        if not self.llm_model:
-            return ""
-        
+    def _parse_with_unstructured(self, document: str | Path) -> ParsedDocument:
+        if isinstance(document, Path):
+            print("Processing document from path:", document)
+            elements = unstructured_partition(filename=str(document))
+        else:
+            elements = unstructured_partition_text(text=document)
+        chunks = tuple(text for element in elements if (text := str(element).strip()))
+        return ParsedDocument(text="\n\n".join(chunks), chunks=chunks)
+
+    def _init_docling(self):
+        if self._docling_converter is None:
+            self._docling_converter = DocumentConverter(allowed_formats=[InputFormat.MD, InputFormat.PDF])
+
+    def _parse_with_docling(self, document: str | Path) -> ParsedDocument:
+        self._init_docling()
+        if isinstance(document, Path):
+            print("Processing document from path:", document)
+            result = self._docling_converter.convert(str(document))
+        else:
+            source = DocumentStream(name="input.md", stream=BytesIO(str(document).encode("utf-8")))
+            result = self._docling_converter.convert(source)
+        markdown = result.document.export_to_markdown()
+        chunks = tuple(chunk.strip() for chunk in markdown.split("\n\n") if chunk.strip())
+        return ParsedDocument(text=markdown, chunks=chunks)
+
+    def _generate_context_for_chunk(self, full_text: str, chunk_text: str) -> str:
         prompt = f"""
 <document>
 {full_text[:4000]}
@@ -146,75 +228,33 @@ Here is the chunk we want to situate within the whole document:
 Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else.
 """
         try:
-            response = openai.chat.completions.create(
+            response = self._openai.chat.completions.create(
                 model=self.llm_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
-                max_tokens=100
+                max_tokens=100,
             )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"Error generating context: {e}")
+            return (response.choices[0].message.content or "").strip()
+        except Exception:
+            if self.context_failure_policy == ContextFailurePolicy.RAISE:
+                raise
+            logging.getLogger(__name__).exception(
+                "Context generation failed; indexing the original chunk because fallback is enabled"
+            )
             return ""
 
-    def _chunks_from_documents(self):
-        chunks = []
-        for doc in self.documents:
-            chunks.extend(self._chunks_from_document(doc))
-        return chunks
+    def _get_reranker(self):
+        if self._reranker is None:
+            self._reranker = CrossEncoder(self._reranker_model)
+        return self._reranker
 
-    def _chunks_from_document(self, document):
-        if self.chunker == ChunkerKind.UNSTRUCTURED:
-            return self._unstructured_chunks(document)
-
-        if self.chunker == ChunkerKind.DOCLING:
-            return self._docling_chunks(document)
-
-        raise ValueError(f"Unsupported chunker: {self.chunker}")
-
-    def _unstructured_chunks(self, document: str | Path) -> list[str]:
-        if isinstance(document, Path):
-            print("Processing document from path:", document)
-            elements = unstructured_partition(document)
-        else:
-            elements = unstructured_partition_text(text=document)
-        return [str(element) for element in elements]
-
-    def _init_docling(self):
-        if self._docling_converter is None:
-            self._docling_converter = DocumentConverter(allowed_formats=[InputFormat.MD, InputFormat.PDF])
-
-    def _docling_chunks(self, document: str | Path):
-        self._init_docling()
-        if isinstance(document, Path):
-            print("Processing document from path:", document)
-            result = self._docling_converter.convert(str(document))
-        else:
-            stream = BytesIO(str(document).encode("utf-8"))
-            source = DocumentStream(name="input.md", stream=stream)
-            result = self._docling_converter.convert(source)
-        markdown = result.document.export_to_markdown()
-        return [chunk.strip() for chunk in markdown.split("\n\n") if chunk.strip()]
-
-    def _texts_from_chunks(self):
-        return [chunk.text if hasattr(chunk, "text") else chunk for chunk in self._chunks]
-
-    def _index_from_texts(self):
-        if not self._chunk_texts:
-            return None
-        embeddings = self._embeddings_for(self._chunk_texts)
-        index = faiss.IndexFlatL2(len(embeddings[0]))
-        index.add(np.array(embeddings).astype("float32"))
-        return index
+    @classmethod
+    def _tokenize(cls, text: str) -> list[str]:
+        return cls._token_pattern.findall(text.casefold())
 
     def _embedding_for(self, text):
         return self._embeddings_for([text])[0]
 
     def _embeddings_for(self, texts):
-        response = openai.embeddings.create(input=texts, model=self.embedding_model)
+        response = self._openai.embeddings.create(input=texts, model=self.embedding_model)
         return [item.embedding for item in response.data]
-
-    def _chunks_for_vector(self, vector, num_neighbors):
-        query = np.array(vector).astype("float32").reshape(1, -1)
-        _, indices = self._index.search(query, num_neighbors)
-        return [self._chunk_texts[i] for i in indices[0]]

@@ -69,17 +69,18 @@ rag = RetrievalAugmentedGenerator(
     num_neighbors=3,
     chunker=ChunkerKind.DOCLING,
 )
-rag.run()
+answers = rag.run()
 
-for query in queries:
-    retrieved_documents = rag.get_retrieved_documents(query)
+for answer in answers:
+    query = answer.query
+    retrieved_documents = answer.retrieved_chunks
 
     print(f"\nQuery: {query}")
     for i, doc in enumerate(retrieved_documents):
         scores = relevance_eval.evaluate(
             {
                 "input": query,
-                "document_text": doc,
+                "document_text": doc.text,
             }
         )
         print(f"Document {i + 1}: {scores[0].label} ({scores[0].score})")

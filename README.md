@@ -1,5 +1,5 @@
-# chaincrafter Retrieval Augmentated Generation
-Example of using [Unstructured](https://github.com/Unstructured-IO/unstructured) and [Docling](https://github.com/docling-project/docling) with [chaincrafter](https://github.com/rudolfolah/chaincrafter) and [faiss](https://github.com/facebookresearch/faiss) to build a Retrieval Augmentated Generation pipeline.
+# chaincrafter Retrieval Augmented Generation
+Example of using [Unstructured](https://github.com/Unstructured-IO/unstructured) and [Docling](https://github.com/docling-project/docling) with [chaincrafter](https://github.com/rudolfolah/chaincrafter) and [FAISS](https://github.com/facebookresearch/faiss) to build a Retrieval Augmented Generation pipeline.
 
 Tested with LM Studio running as locally hosted LLM server, for embeddings you will need the Nomic model: `text-embedding-nomic-embed-text-v1.5`.
 
@@ -15,8 +15,27 @@ Unstructured requires `libmagic` for detecting the file type of the documents, i
 
 ## Project Structure
 - [`PromptBuilder` in `prompt_builder.py`](./prompt_builder.py) builds system and user prompts
-- [`retriever.py`](./retriever.py) provides the `Retriever` class for chunking documents and retrieving documents
-- [`RetrievalAugmentedGenerator` in `retrieval_augmented_generator.py`](./retrieval_augmented_generator.py) prepares and then generates answers to queries
+- [`retriever.py`](./retriever.py) provides structured retrieval results with source provenance
+- [`RetrievalAugmentedGenerator` in `retrieval_augmented_generator.py`](./retrieval_augmented_generator.py) returns `GeneratedAnswer` values containing messages and retrieved chunks
+
+## Programmatic API
+
+`run()`, `generate()`, and `answer()` return results without printing:
+
+```python
+answers = rag.run()
+for answer in answers:
+    print(answer.query, answer.text)
+    for chunk in answer.retrieved_chunks:
+        print(chunk.source, chunk.original_text)
+```
+
+Run the offline regression and lint checks with:
+
+```shell
+uv run pytest -q
+uv run ruff check .
+```
 
 ## Examples
 ### [`main.py`](./main.py) - Documents and Queries

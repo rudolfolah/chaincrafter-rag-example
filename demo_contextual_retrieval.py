@@ -34,7 +34,7 @@ def run_demo():
     
     results = retriever_basic.retrieve(query, num_neighbors=1)
     print(f"Query: {query}")
-    print(f"Top Result:\n{results[0]}")
+    print(f"Top Result:\n{results[0].text}")
 
     # Case 2: With Contextual Retrieval
     print("\n[Case 2: With Contextual Retrieval]")
@@ -50,7 +50,7 @@ def run_demo():
     
     results = retriever_context.retrieve(query, num_neighbors=1)
     print(f"Query: {query}")
-    print(f"Top Result:\n{results[0]}")
+    print(f"Top Result:\n{results[0].text}")
 
 if __name__ == "__main__":
     run_demo()
