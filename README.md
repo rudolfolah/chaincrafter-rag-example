@@ -90,6 +90,41 @@ Sample interactions:
 - `/ingest docs/research.pdf` (Ingests a new source into the wiki)
 - `/lint` (Performs a health check for contradictions and gaps)
 
+## [`eval_ollama.py`](./eval_ollama.py) - Local demo comparison
+
+With Ollama running, pull the default models and run:
+
+```shell
+for model in qwen2.5:0.5b smollm2:135m smollm2:360m all-minilm:22m \
+             snowflake-arctic-embed:22m nomic-embed-text gemma3:4b; do
+  ollama pull "$model" || break
+done
+uv run --locked --extra trulens python eval_ollama.py
+```
+
+| Demo | What changes | Baseline |
+| --- | --- | --- |
+| Contextual retrieval | Three Ollama chat models add context before indexing; embeddings stay fixed | Vector search without added context |
+| Hybrid search | Three Ollama embedding models, each with BM25 and reciprocal rank fusion | Vector search with the same embedding model |
+| Reranking | Three Ollama embedding models, each with the same CrossEncoder | Vector search with the same embedding model |
+
+Each demo uses its existing corpus and three hand-labeled queries. The report shows Hit@k (fraction of queries with a relevant result), MRR@k (mean reciprocal rank of the first relevant result), and TruLens Context Relevance. The fixed local `gemma3:4b` judge grades original chunks on a 0–1 scale, separately from the hand labels and after all index and query timings. This small dataset measures retrieval, not generated answer quality.
+
+Use `--details` for per-query ranks, scores, and retrieved text. Use `--demo contextual hybrid` to limit the run; `--chat-models`, `--embedding-models`, `--contextual-embedding-model`, and `--judge-model` select installed tags. A custom judge must support structured JSON output. The eval uses `OLLAMA_HOST` and needs no OpenAI key. The first run may download Unstructured tokenizer data and the fixed Hugging Face reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`); these are reused from cache.
+
+### View the results in a browser
+
+```shell
+uv run --locked --extra trulens python eval_ollama.py --trulens-db .trulens/ollama.sqlite
+uv run --script eval_trulens.py
+```
+
+Open [http://127.0.0.1:8501](http://127.0.0.1:8501). Select a demo in the sidebar: **Leaderboard** compares model variants, and **Records** shows individual queries, retrieved chunks, and scores. Runs append to the database. To view saved runs again, start only the dashboard; it doesn't call Ollama.
+New records include retrieval spans in TruLens **Span JSON**: contextual prompts and outputs, embedding inputs and dimensions, vector/BM25 rankings, reranking scores, and returned chunks with original and enriched text. Per-record metadata includes hand-label ranks and metrics. Token counts are populated when Ollama returns usage data; local generation cost remains $0. Older records have no spans to backfill, so run the eval again to create traced records.
+
+For a faster first run, add `--demo hybrid` to the first command. To use a different database, pass the same `--trulens-db PATH` to both commands. The dashboard runs in its own Python 3.13 environment because its `psutil` requirement conflicts with Unstructured's.
+The first recorded query for each model variant includes index preparation; subsequent records include only their own query spans, avoiding duplicate index counts.
+
 ## [`eval_phoenix.py`](./eval_phoenix.py) - Evaluation
 Runs an evaluation of the answers from a set of documents and queries, based on [`main.py`](./main.py).
 Its separate `gpt-4o` judge still needs an OpenAI-compatible endpoint that serves that model, even when the RAG pipeline uses Ollama.
