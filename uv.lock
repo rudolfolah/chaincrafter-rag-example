@@ -365,6 +365,11 @@ dependencies = [
     { name = "unstructured", extra = ["md", "pdf"] },
 ]
 
+[package.optional-dependencies]
+trulens = [
+    { name = "trulens-feedback" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -381,8 +386,10 @@ requires-dist = [
     { name = "openai", specifier = "==3.48.0" },
     { name = "rank-bm25", specifier = "==0.2.2" },
     { name = "sentence-transformers", specifier = "==5.3.0" },
+    { name = "trulens-feedback", marker = "extra == 'trulens'", specifier = "==2.16.0" },
     { name = "unstructured", extras = ["md", "pdf"], specifier = "==0.20.8" },
 ]
+provides-extras = ["trulens"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1373,6 +1380,15 @@ wheels = [
 ]
 
 [[package]]
+name = "importlib-resources"
+version = "7.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/06/b56dfa750b44e86157093bc8fca0ab81dccbf5260510de4eaf1cb69b5b99/importlib_resources-7.1.0.tar.gz", hash = "sha256:0722d4c6212489c530f2a145a34c0a7a3b4721bc96a15fada5930e2a0b760708", size = 44985, upload-time = "2026-04-12T16:36:09.232Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/db/55a262f3606bebcae07cc14095338471ad7c0bbcaa37707e6f0ee49725b7/importlib_resources-7.1.0-py3-none-any.whl", hash = "sha256:1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1", size = 37232, upload-time = "2026-04-12T16:36:08.219Z" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2045,6 +2061,24 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/b7/2e9a4fcd871b81e1f2a812cd5c6fb52ad1e8da7bf0d7646c55eaae220484/multiprocess-0.70.17-py313-none-any.whl", hash = "sha256:20c28ca19079a6c879258103a6d60b94d4ffe2d9da07dda93fb1c8bc6243f522", size = 149843, upload-time = "2024-09-30T18:06:02.261Z" },
     { url = "https://files.pythonhosted.org/packages/ae/d7/fd7a092fc0ab1845a1a97ca88e61b9b7cc2e9d6fcf0ed24e9480590c2336/multiprocess-0.70.17-py38-none-any.whl", hash = "sha256:1d52f068357acd1e5bbc670b273ef8f81d57863235d9fbf9314751886e141968", size = 132635, upload-time = "2024-09-30T18:06:03.878Z" },
     { url = "https://files.pythonhosted.org/packages/f9/41/0618ac724b8a56254962c143759e04fa01c73b37aa69dd433f16643bd38b/multiprocess-0.70.17-py39-none-any.whl", hash = "sha256:c3feb874ba574fbccfb335980020c1ac631fbf2a3f7bee4e2042ede62558a021", size = 133359, upload-time = "2024-09-30T18:06:05.627Z" },
+]
+
+[[package]]
+name = "munch"
+version = "4.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e7/2b/45098135b5f9f13221820d90f9e0516e11a2a0f55012c13b081d202b782a/munch-4.0.0.tar.gz", hash = "sha256:542cb151461263216a4e37c3fd9afc425feeaf38aaa3025cd2a981fadb422235", size = 19089, upload-time = "2023-07-01T09:49:35.98Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/b3/7c69b37f03260a061883bec0e7b05be7117c1b1c85f5212c72c8c2bc3c8c/munch-4.0.0-py2.py3-none-any.whl", hash = "sha256:71033c45db9fb677a0b7eb517a4ce70ae09258490e419b0e7f00d1e386ecb1b4", size = 9950, upload-time = "2023-07-01T09:49:34.472Z" },
+]
+
+[[package]]
+name = "nest-asyncio"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/f8/51569ac65d696c8ecbee95938f89d4abf00f47d58d48f6fbabfe8f0baefe/nest_asyncio-1.6.0.tar.gz", hash = "sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe", size = 7418, upload-time = "2024-01-21T14:25:19.227Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/c4/c2971a3ba4c6103a3d10c4b0f24f461ddc027f0f09763220cf35ca1401b3/nest_asyncio-1.6.0-py3-none-any.whl", hash = "sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c", size = 5195, upload-time = "2024-01-21T14:25:17.223Z" },
 ]
 
 [[package]]
@@ -4565,6 +4599,66 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/df/3d/9e7eee57b37c80cec63322c0231bb6da3cfe535a91d7a4d64896fcb89357/triton-3.6.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a17a5d5985f0ac494ed8a8e54568f092f7057ef60e1b0fa09d3fd1512064e803", size = 188273063, upload-time = "2026-01-20T16:01:07.278Z" },
     { url = "https://files.pythonhosted.org/packages/48/db/56ee649cab5eaff4757541325aca81f52d02d4a7cd3506776cad2451e060/triton-3.6.0-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:0b3a97e8ed304dfa9bd23bb41ca04cdf6b2e617d5e782a8653d616037a5d537d", size = 176274804, upload-time = "2026-01-20T16:16:31.528Z" },
     { url = "https://files.pythonhosted.org/packages/f6/56/6113c23ff46c00aae423333eb58b3e60bdfe9179d542781955a5e1514cb3/triton-3.6.0-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:46bd1c1af4b6704e554cad2eeb3b0a6513a980d470ccfa63189737340c7746a7", size = 188397994, upload-time = "2026-01-20T16:01:14.236Z" },
+]
+
+[[package]]
+name = "trulens-core"
+version = "2.16.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "alembic" },
+    { name = "dill" },
+    { name = "importlib-resources" },
+    { name = "munch" },
+    { name = "nest-asyncio" },
+    { name = "numpy" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-proto" },
+    { name = "opentelemetry-sdk" },
+    { name = "packaging" },
+    { name = "pandas" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "sqlalchemy" },
+    { name = "trulens-otel-semconv" },
+    { name = "typing-extensions" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ae/2b/e3848f7762a97f24c2cd7c1d2e69b00cb9f2ea3c8ccd4b8fac4c16b14912/trulens_core-2.16.0.tar.gz", hash = "sha256:249b8fa791b5905494e8bee2c7b8c1f3fad581f56e0b3e89b8b1c471058de820", size = 374049, upload-time = "2026-10-19T02:31:06.445Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/1d/adaf90cc01d8a444a856bb75195c528d11fa08c8d59fe32e82e7ee0f6fa3/trulens_core-2.16.0-py3-none-any.whl", hash = "sha256:61bbb400ee4f7d2fe746f73f47e84f71d1999b0ebc20630411d2c680dae28e4a", size = 444306, upload-time = "2026-10-19T02:30:36.909Z" },
+]
+
+[[package]]
+name = "trulens-feedback"
+version = "2.16.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nltk" },
+    { name = "numpy" },
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "trulens-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f5/a4/d0593dc7eda39b7cdb31f77de5b9a7599f264b2ff53043760660cb5eceed/trulens_feedback-2.16.0.tar.gz", hash = "sha256:77cf87f47218d1508871de0e69472a5e8e9b9c7aea4bd40c8d602f74f6665a8b", size = 97526, upload-time = "2026-10-19T02:31:08.672Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f0/e7/0df03f98a4e273df359483c4c1a6484463088c9e564c19e82cfe44ccf5f9/trulens_feedback-2.16.0-py3-none-any.whl", hash = "sha256:32b153b7461d767dc2d0150d9251ff4843b5a737c2e0bb32e4f9b3616cbc1ba6", size = 104428, upload-time = "2026-10-19T02:30:40.229Z" },
+]
+
+[[package]]
+name = "trulens-otel-semconv"
+version = "2.16.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-semantic-conventions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/9a/0117b432f3a055ac8f7b1d13d8ab222013885906a811972a09d6a282f6bb/trulens_otel_semconv-2.16.0.tar.gz", hash = "sha256:b21fde486f1bb3fc6196712a0f6db8dc90bca0baec931ea9a8aab5f27cadede2", size = 7944, upload-time = "2026-10-19T02:31:10.156Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5a/14/50ae231f06c3a822aa1ece74838a8658baa6211b70940b462c42fd25ef69/trulens_otel_semconv-2.16.0-py3-none-any.whl", hash = "sha256:80c11f93a807b2af2a1850f3c33488443aa7f33656aa26967a9a3053c17bc738", size = 8999, upload-time = "2026-10-19T02:30:42.547Z" },
 ]
 
 [[package]]
