@@ -7,14 +7,7 @@ from pathlib import Path
 
 import faiss
 import numpy as np
-import openai
-from docling.datamodel.base_models import InputFormat
-from docling.document_converter import DocumentConverter
-from docling_core.types.io import DocumentStream
-from rank_bm25 import BM25Okapi
-from sentence_transformers import CrossEncoder
-from unstructured.partition.auto import partition as unstructured_partition
-from unstructured.partition.text import partition_text as unstructured_partition_text
+from model_provider import create_model_client
 
 
 class ChunkerKind(str, Enum):
@@ -66,7 +59,7 @@ class Retriever:
         self.use_reranking = use_reranking
         self.use_contextual_retrieval = use_contextual_retrieval
         self.context_failure_policy = context_failure_policy
-        self._openai = openai_client or openai
+        self._openai = openai_client
         self._reranker_model = reranker_model
         self._indexed_chunks: list[RetrievedChunk] = []
         self._index = None
@@ -180,7 +173,9 @@ class Retriever:
             self._index.add(vectors)
             self._indexed_chunks.extend(indexed_chunks)
 
-        if self._indexed_chunks:
+        if self.use_hybrid and self._indexed_chunks:
+            from rank_bm25 import BM25Okapi
+
             tokenized_corpus = [self._tokenize(chunk.text) for chunk in self._indexed_chunks]
             self._bm25 = BM25Okapi(tokenized_corpus)
 
@@ -193,15 +188,22 @@ class Retriever:
 
     def _parse_with_unstructured(self, document: str | Path) -> ParsedDocument:
         if isinstance(document, Path):
+            from unstructured.partition.auto import partition as unstructured_partition
+
             print("Processing document from path:", document)
             elements = unstructured_partition(filename=str(document))
         else:
+            from unstructured.partition.text import partition_text as unstructured_partition_text
+
             elements = unstructured_partition_text(text=document)
         chunks = tuple(text for element in elements if (text := str(element).strip()))
         return ParsedDocument(text="\n\n".join(chunks), chunks=chunks)
 
     def _init_docling(self):
         if self._docling_converter is None:
+            from docling.datamodel.base_models import InputFormat
+            from docling.document_converter import DocumentConverter
+
             self._docling_converter = DocumentConverter(allowed_formats=[InputFormat.MD, InputFormat.PDF])
 
     def _parse_with_docling(self, document: str | Path) -> ParsedDocument:
@@ -210,6 +212,8 @@ class Retriever:
             print("Processing document from path:", document)
             result = self._docling_converter.convert(str(document))
         else:
+            from docling_core.types.io import DocumentStream
+
             source = DocumentStream(name="input.md", stream=BytesIO(str(document).encode("utf-8")))
             result = self._docling_converter.convert(source)
         markdown = result.document.export_to_markdown()
@@ -228,7 +232,7 @@ Here is the chunk we want to situate within the whole document:
 Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else.
 """
         try:
-            response = self._openai.chat.completions.create(
+            response = self._get_model_client().chat.completions.create(
                 model=self.llm_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
@@ -245,6 +249,8 @@ Please give a short succinct context to situate this chunk within the overall do
 
     def _get_reranker(self):
         if self._reranker is None:
+            from sentence_transformers import CrossEncoder
+
             self._reranker = CrossEncoder(self._reranker_model)
         return self._reranker
 
@@ -252,9 +258,14 @@ Please give a short succinct context to situate this chunk within the overall do
     def _tokenize(cls, text: str) -> list[str]:
         return cls._token_pattern.findall(text.casefold())
 
+    def _get_model_client(self):
+        if self._openai is None:
+            self._openai = create_model_client()
+        return self._openai
+
     def _embedding_for(self, text):
         return self._embeddings_for([text])[0]
 
     def _embeddings_for(self, texts):
-        response = self._openai.embeddings.create(input=texts, model=self.embedding_model)
+        response = self._get_model_client().embeddings.create(input=texts, model=self.embedding_model)
         return [item.embedding for item in response.data]

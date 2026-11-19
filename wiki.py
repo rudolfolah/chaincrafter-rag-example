@@ -9,8 +9,8 @@ from tempfile import NamedTemporaryFile
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from chaincrafter import Chain, Prompt
-from unstructured.partition.auto import partition as unstructured_partition
 
+from model_provider import model_names
 from prompt_builder import PromptBuilder
 from retrieval_augmented_generator import GeneratedAnswer, RetrievalAugmentedGenerator
 from retriever import ChunkerKind
@@ -186,6 +186,8 @@ class WikiRetrievalAugmentedGenerator(RetrievalAugmentedGenerator):
     def _read_source_text(source_path: Path) -> str:
         if source_path.suffix.lower() in {".md", ".txt"}:
             return source_path.read_text(encoding="utf-8")
+
+        from unstructured.partition.auto import partition as unstructured_partition
 
         elements = unstructured_partition(str(source_path))
         return "\n\n".join(str(element) for element in elements)
@@ -554,12 +556,13 @@ if __name__ == "__main__":
     print(f"Documents found in vault: {len(documents)} markdown files")
 
     prompts = WikiPromptBuilder("You are a personal wiki maintainer.")
+    chat_model, embedding_model = model_names("gemma-4-e4b-it")
     rag = WikiRetrievalAugmentedGenerator(
         vault_path=vault_path,
         documents=documents,
         queries=[],
-        embedding_model="text-embedding-nomic-embed-text-v1.5",
-        llm_model="gemma-4-e4b-it",
+        embedding_model=embedding_model,
+        llm_model=chat_model,
         temperature=0.7,
         num_neighbors=5,
         chunker=ChunkerKind.UNSTRUCTURED,

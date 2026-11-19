@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 
+from model_provider import model_names
 from retriever import ChunkerKind
 from retrieval_augmented_generator import RetrievalAugmentedGenerator
 
@@ -11,11 +12,12 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 documents = sorted(Path("./docs").glob("*.pdf"))
 documents.extend(sorted(Path("./docs").glob("*.md")))
 print("Documents found:", documents)
+chat_model, embedding_model = model_names("gemma-4-e4b-it")
 rag = RetrievalAugmentedGenerator(
     documents=documents,
     queries=[],
-    embedding_model="text-embedding-nomic-embed-text-v1.5",
-    llm_model="gemma-4-e4b-it",
+    embedding_model=embedding_model,
+    llm_model=chat_model,
     temperature=0.7,
     num_neighbors=5,
     chunker=ChunkerKind.UNSTRUCTURED,

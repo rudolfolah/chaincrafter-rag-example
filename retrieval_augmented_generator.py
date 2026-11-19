@@ -2,10 +2,38 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from chaincrafter import Chain
-from chaincrafter.models import OpenAiChat
+from chaincrafter.models import ChatModel
 
+from model_provider import create_model_client
 from prompt_builder import PromptBuilder
 from retriever import ChunkerKind, RetrievedChunk, Retriever
+
+
+class _ClientChatModel(ChatModel):
+    def __init__(
+        self,
+        client,
+        model_name: str,
+        temperature: float,
+        max_tokens: int | None,
+    ):
+        super().__init__(temperature, model_name)
+        self._client = client
+        self._model_name = model_name
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+
+    def complete(self, messages):
+        options = {}
+        if self._max_tokens is not None:
+            options["max_tokens"] = self._max_tokens
+        response = self._client.chat.completions.create(
+            model=self._model_name,
+            messages=messages,
+            temperature=self._temperature,
+            **options,
+        )
+        return response.choices[0].message.content
 
 
 @dataclass(frozen=True)
@@ -37,8 +65,11 @@ class RetrievalAugmentedGenerator:
         use_hybrid=True,
         use_reranking=True,
         use_contextual_retrieval=True,
+        *,
+        max_tokens: int | None = None,
     ):
         self.queries = queries
+        client = create_model_client()
         self.retriever = Retriever(
             documents,
             embedding_model,
@@ -47,6 +78,7 @@ class RetrievalAugmentedGenerator:
             use_hybrid=use_hybrid,
             use_reranking=use_reranking,
             use_contextual_retrieval=use_contextual_retrieval,
+            openai_client=client,
         )
         self._num_neighbors = num_neighbors
         self._retrieved_documents: dict[str, list[RetrievedChunk]] = {}
@@ -56,7 +88,7 @@ class RetrievalAugmentedGenerator:
             "Do not have a preamble in any response."
         )
         self.prompts = PromptBuilder(system_prompt)
-        self.chat_model = OpenAiChat(temperature=temperature, model_name=llm_model)
+        self.chat_model = _ClientChatModel(client, llm_model, temperature, max_tokens)
 
     def prepare(self):
         self.retriever.prepare()

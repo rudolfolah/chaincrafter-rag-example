@@ -1,3 +1,5 @@
+import builtins
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -80,17 +82,16 @@ def test_retrieve_rejects_invalid_state_and_neighbor_count():
 
 
 def test_reranker_is_lazy_when_disabled(monkeypatch):
-    loaded_models = []
-    monkeypatch.setattr(
-        retriever_module,
-        "CrossEncoder",
-        lambda model: loaded_models.append(model),
-    )
+    original_import = builtins.__import__
 
+    def guarded_import(name, *args, **kwargs):
+        if name == "sentence_transformers" or name.startswith("sentence_transformers."):
+            pytest.fail("disabled reranking must not import Sentence Transformers")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
     retriever = make_retriever(["alpha"]).prepare()
     retriever.retrieve("alpha")
-
-    assert loaded_models == []
     assert retriever._reranker is None
 
 
@@ -115,10 +116,12 @@ def test_unstructured_parser_uses_extracted_pdf_text(monkeypatch, tmp_path):
     source = tmp_path / "source.pdf"
     source.write_bytes(b"%PDF raw bytes")
     calls = []
-    monkeypatch.setattr(
-        retriever_module,
-        "unstructured_partition",
-        lambda **kwargs: calls.append(kwargs) or ["Parsed first", "Parsed second"],
+    monkeypatch.setitem(
+        sys.modules,
+        "unstructured.partition.auto",
+        SimpleNamespace(
+            partition=lambda **kwargs: calls.append(kwargs) or ["Parsed first", "Parsed second"]
+        ),
     )
     retriever = make_retriever([])
 
@@ -152,3 +155,72 @@ def test_context_failure_policy_is_explicit():
 
 def test_tokenizer_handles_case_and_punctuation_consistently():
     assert Retriever._tokenize("Hello, WORLD!") == ["hello", "world"]
+
+
+def test_default_client_is_created_once_on_first_request(monkeypatch):
+    client = fake_client()
+    created = []
+    monkeypatch.setattr(
+        retriever_module, "create_model_client", lambda: created.append(client) or client
+    )
+    retriever = make_retriever(
+        ["alpha"],
+        openai_client=None,
+        llm_model="fake-chat",
+        use_contextual_retrieval=True,
+    )
+    assert created == []
+
+    retriever.prepare()
+    retriever.retrieve("alpha")
+
+    assert created == [client]
+    assert retriever._openai is client
+
+
+def test_injected_client_does_not_create_default(monkeypatch):
+    def unexpected_client():
+        pytest.fail("an injected client must remain authoritative")
+
+    monkeypatch.setattr(retriever_module, "create_model_client", unexpected_client)
+    retriever = make_retriever(
+        ["alpha"], llm_model="fake-chat", use_contextual_retrieval=True
+    ).prepare()
+    assert retriever.retrieve("alpha")[0].original_text == "alpha"
+
+
+def test_vector_only_retrieval_does_not_import_optional_stacks(monkeypatch):
+    original_import = builtins.__import__
+    optional_roots = {
+        "docling", "docling_core", "unstructured", "sentence_transformers", "rank_bm25"
+    }
+
+    def guarded_import(name, *args, **kwargs):
+        if name.split(".")[0] in optional_roots:
+            pytest.fail(f"vector-only retrieval imported {name}")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    retriever = make_retriever(["alpha", "beta"], use_hybrid=False).prepare()
+
+    assert retriever._bm25 is None
+    assert retriever.retrieve("alpha")[0].text == "alpha"
+
+
+def test_unstructured_text_does_not_import_auto_partition(monkeypatch):
+    monkeypatch.setitem(
+        sys.modules,
+        "unstructured.partition.text",
+        SimpleNamespace(partition_text=lambda **kwargs: [kwargs["text"]]),
+    )
+    original_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "unstructured.partition.auto":
+            pytest.fail("plain text must not import the file parser stack")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    parsed = make_retriever([])._parse_with_unstructured("alpha")
+
+    assert parsed == ParsedDocument(text="alpha", chunks=("alpha",))

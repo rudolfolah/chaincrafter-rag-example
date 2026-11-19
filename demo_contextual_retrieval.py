@@ -1,6 +1,7 @@
 import os
 from retriever import Retriever
 from main import documents as main_documents, queries as main_queries
+from model_provider import model_names
 
 # Workaround for unstructured
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -15,8 +16,7 @@ def run_demo():
     print("--- Demo: Contextual Retrieval using main.py text ---")
     
     # Common settings
-    embedding_model = "text-embedding-nomic-embed-text-v1.5"
-    llm_model = "google/gemma-3-4b"
+    llm_model, embedding_model = model_names("google/gemma-3-4b")
     # Using the first query from main.py
     query = main_queries[0]
     

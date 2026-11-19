@@ -28,6 +28,10 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-m 'not ollama'"
+markers = [
+    "ollama: real local Ollama integration (requires a running service and cached models)",
+]
 
 [tool.ruff]
 target-version = "py312"
