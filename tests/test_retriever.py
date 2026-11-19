@@ -70,6 +70,39 @@ def test_retrieve_clamps_candidates_without_faiss_padding():
     assert len({result.document_index for result in results}) == 2
 
 
+def test_optional_trace_callback_records_model_vector_and_hybrid_stages():
+    events = []
+    retriever = make_retriever(["alpha source", "beta source"])
+    retriever._trace_callback = events.append
+    retriever.prepare()
+    index_methods = [event.method for event in events]
+    assert index_methods == [
+        "_embeddings_for",
+        "_embeddings_for",
+        "prepare",
+    ]
+    assert events[0].args["model"] == "fake-embedding"
+    assert events[0].args["inputs"] == ["alpha source"]
+    assert events[1].args["inputs"] == ["beta source"]
+
+    events.clear()
+    results = retriever.retrieve("alpha", num_neighbors=1)
+
+    methods = [event.method for event in events]
+    assert methods == [
+        "_embeddings_for",
+        "_indices_for_vector",
+        "_bm25_rank",
+        "_rrf_combine",
+        "retrieve",
+    ]
+    assert events[0].args["inputs"] == ["alpha"]
+    assert events[1].rets[0]["score"] == pytest.approx(1.0)
+    assert events[-1].args["query"] == "alpha"
+    assert events[-1].rets[0]["original_text"] == results[0].original_text
+    assert events[-1].start_time <= events[-1].end_time
+
+
 def test_retrieve_rejects_invalid_state_and_neighbor_count():
     retriever = make_retriever([])
 
@@ -103,13 +136,21 @@ def test_contextual_chunks_keep_original_text_and_source(tmp_path):
         llm_model="fake-chat",
         use_contextual_retrieval=True,
         openai_client=fake_client(context="document context"),
-    ).prepare()
+    )
+    trace_events = []
+    retriever._trace_callback = trace_events.append
+    retriever.prepare()
 
     result = retriever.retrieve("alpha", num_neighbors=1)[0]
 
     assert result.text == "document context\n\nalpha"
     assert result.original_text == "alpha"
     assert result.source == source
+    assert trace_events[0].method == "_generate_context_for_chunk"
+    assert trace_events[0].args["document"] == "alpha"
+    assert trace_events[0].args["chunk"] == "alpha"
+    assert trace_events[0].rets["context"] == "document context"
+    assert trace_events[1].args["inputs"] == ["document context\n\nalpha"]
 
 
 def test_unstructured_parser_uses_extracted_pdf_text(monkeypatch, tmp_path):

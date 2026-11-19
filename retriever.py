@@ -1,6 +1,7 @@
 import logging
 import re
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from enum import Enum
 from io import BytesIO
 from pathlib import Path
@@ -35,6 +36,16 @@ class RetrievedChunk:
     score: float | None = None
 
 
+@dataclass(frozen=True)
+class _TraceEvent:
+    method: str
+    args: dict
+    rets: object
+    retriever_id: int
+    start_time: datetime
+    end_time: datetime
+
+
 class Retriever:
     _token_pattern = re.compile(r"\w+", re.UNICODE)
 
@@ -66,21 +77,82 @@ class Retriever:
         self._bm25 = None
         self._reranker = None
         self._docling_converter = None
+        self._trace_callback = None
+
+    def _trace_start(self):
+        if self._trace_callback is None:
+            return None
+        return id(self), datetime.now(timezone.utc)
+
+    def _trace_end(self, method, args, rets, started):
+        if started is None:
+            return
+        retriever_id, start_time = started
+        self._trace_callback(
+            _TraceEvent(
+                method=method,
+                args=args,
+                rets=rets,
+                retriever_id=retriever_id,
+                start_time=start_time,
+                end_time=datetime.now(timezone.utc),
+            )
+        )
+
+    @staticmethod
+    def _chunk_trace(chunk: RetrievedChunk) -> dict:
+        return {
+            "text": chunk.text,
+            "original_text": chunk.original_text,
+            "document_index": chunk.document_index,
+            "source": str(chunk.source) if chunk.source is not None else None,
+            "score": chunk.score,
+        }
+
+    @staticmethod
+    def _usage_trace(usage):
+        if usage is None:
+            return None
+        return {
+            "prompt_tokens": getattr(usage, "prompt_tokens", None),
+            "completion_tokens": getattr(usage, "completion_tokens", None),
+            "total_tokens": getattr(usage, "total_tokens", None),
+        }
 
     @property
     def is_ready(self) -> bool:
         return self._index is not None and self._index.ntotal > 0
 
     def prepare(self):
+        started = self._trace_start()
         self._rebuild_from_documents(self.documents)
+        self._trace_end(
+            "prepare",
+            {
+                "document_count": len(self.documents),
+                "chunker": self.chunker.value,
+            },
+            {
+                "indexed_chunk_count": len(self._indexed_chunks),
+                "embedding_model": self.embedding_model,
+                "chat_model": self.llm_model,
+                "contextual_retrieval": self.use_contextual_retrieval,
+                "hybrid": self.use_hybrid,
+                "reranking": self.use_reranking,
+            },
+            started,
+        )
         return self
 
     def retrieve(self, query: str, num_neighbors: int = 2) -> list[RetrievedChunk]:
         if num_neighbors <= 0:
             raise ValueError("num_neighbors must be greater than zero")
         if not self.is_ready:
-            raise RuntimeError("retriever has no searchable chunks; call prepare() with supported documents")
+            raise RuntimeError(
+                "retriever has no searchable chunks; call prepare() with supported documents"
+            )
 
+        started = self._trace_start()
         candidate_count = min(self._index.ntotal, max(num_neighbors, num_neighbors * 5))
         query_vector = self._embedding_for(query)
         vector_indices = self._indices_for_vector(query_vector, candidate_count)
@@ -88,24 +160,79 @@ class Retriever:
 
         if self.use_hybrid and self._bm25 is not None:
             tokenized_query = self._tokenize(query)
+            bm25_started = self._trace_start()
             bm25_scores = self._bm25.get_scores(tokenized_query)
             bm25_indices = np.argsort(bm25_scores)[::-1][:candidate_count]
+            hybrid_ranking = [
+                {"chunk_index": int(index), "score": float(bm25_scores[index])}
+                for index in bm25_indices
+            ]
+            self._trace_end(
+                "_bm25_rank",
+                {"query": query, "candidate_count": candidate_count},
+                hybrid_ranking,
+                bm25_started,
+            )
+            rrf_started = self._trace_start()
             combined_indices = self._rrf_combine([vector_indices, bm25_indices])
+            self._trace_end(
+                "_rrf_combine",
+                {
+                    "vector_indices": vector_indices,
+                    "bm25_ranking": hybrid_ranking,
+                },
+                {"chunk_indices": combined_indices},
+                rrf_started,
+            )
 
         if self.use_reranking and combined_indices:
-            candidate_texts = [self._indexed_chunks[index].text for index in combined_indices]
+            candidate_texts = [
+                self._indexed_chunks[index].text for index in combined_indices
+            ]
             pairs = [[query, text] for text in candidate_texts]
+            rerank_started = self._trace_start()
             scores = self._get_reranker().predict(pairs)
             score_order = np.argsort(scores)[::-1]
-            return [
+            self._trace_end(
+                "_rerank_candidates",
+                {"query": query, "candidates": candidate_texts},
+                [
+                    {
+                        "chunk_index": combined_indices[position],
+                        "score": float(scores[position]),
+                    }
+                    for position in score_order
+                ],
+                rerank_started,
+            )
+            results = [
                 replace(
                     self._indexed_chunks[combined_indices[position]],
                     score=float(scores[position]),
                 )
                 for position in score_order[:num_neighbors]
             ]
+        else:
+            results = [
+                self._indexed_chunks[index]
+                for index in combined_indices[:num_neighbors]
+            ]
 
-        return [self._indexed_chunks[index] for index in combined_indices[:num_neighbors]]
+        self._trace_end(
+            "retrieve",
+            {
+                "query": query,
+                "num_neighbors": num_neighbors,
+                "candidate_count": candidate_count,
+                "embedding_model": self.embedding_model,
+                "contextual_retrieval": self.use_contextual_retrieval,
+                "hybrid": self.use_hybrid,
+                "reranking": self.use_reranking,
+            },
+            [self._chunk_trace(chunk) for chunk in results],
+            started,
+        )
+        return results
 
     @staticmethod
     def _rrf_combine(rankings, k=60) -> list[int]:
@@ -121,10 +248,27 @@ class Retriever:
         return sorted(scores, key=scores.__getitem__, reverse=True)
 
     def _indices_for_vector(self, vector, num_neighbors: int) -> list[int]:
+        started = self._trace_start()
         query = np.asarray(vector, dtype="float32").reshape(1, -1)
         faiss.normalize_L2(query)
-        _, indices = self._index.search(query, min(num_neighbors, self._index.ntotal))
-        return [int(index) for index in indices[0] if index >= 0]
+        scores, indices = self._index.search(
+            query, min(num_neighbors, self._index.ntotal)
+        )
+        results = [int(index) for index in indices[0] if index >= 0]
+        self._trace_end(
+            "_indices_for_vector",
+            {
+                "neighbor_count": num_neighbors,
+                "vector_dimensions": int(query.shape[1]),
+            },
+            [
+                {"chunk_index": int(index), "score": float(score)}
+                for score, index in zip(scores[0], indices[0], strict=True)
+                if index >= 0
+            ],
+            started,
+        )
+        return results
 
     def add_documents(self, documents):
         new_documents = list(documents)
@@ -231,6 +375,7 @@ Here is the chunk we want to situate within the whole document:
 </chunk>
 Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else.
 """
+        started = self._trace_start()
         try:
             response = self._get_model_client().chat.completions.create(
                 model=self.llm_model,
@@ -238,7 +383,24 @@ Please give a short succinct context to situate this chunk within the overall do
                 temperature=0,
                 max_tokens=100,
             )
-            return (response.choices[0].message.content or "").strip()
+            context = (response.choices[0].message.content or "").strip()
+            rets = {"context": context}
+            if started is not None:
+                rets["usage"] = self._usage_trace(
+                    getattr(response, "usage", None)
+                )
+            self._trace_end(
+                "_generate_context_for_chunk",
+                {
+                    "model": self.llm_model,
+                    "document": full_text[:4000],
+                    "chunk": chunk_text,
+                    "prompt": prompt,
+                },
+                rets,
+                started,
+            )
+            return context
         except Exception:
             if self.context_failure_policy == ContextFailurePolicy.RAISE:
                 raise
@@ -267,5 +429,22 @@ Please give a short succinct context to situate this chunk within the overall do
         return self._embeddings_for([text])[0]
 
     def _embeddings_for(self, texts):
-        response = self._get_model_client().embeddings.create(input=texts, model=self.embedding_model)
-        return [item.embedding for item in response.data]
+        started = self._trace_start()
+        response = self._get_model_client().embeddings.create(
+            input=texts, model=self.embedding_model
+        )
+        embeddings = [item.embedding for item in response.data]
+        rets = {
+            "embedding_count": len(embeddings),
+            "vector_dimensions": len(embeddings[0]) if embeddings else 0,
+        }
+        if started is not None:
+            rets["usage"] = self._usage_trace(getattr(response, "usage", None))
+        self._trace_end(
+            "_embeddings_for",
+            {"model": self.embedding_model, "inputs": list(texts)},
+            rets,
+            started,
+        )
+        return embeddings
+
